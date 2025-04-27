@@ -111,8 +111,8 @@ SITES = {
     'wanmen'           : 'wanmen',
     'weibo'            : 'miaopai',
     'veoh'             : 'veoh',
-    'vine'             : 'vine',
     'vk'               : 'vk',
+    'x'                : 'twitter',
     'xiaokaxiu'        : 'yixia',
     'xiaojiadianvideo' : 'fc2video',
     'ximalaya'         : 'ximalaya',
@@ -138,13 +138,14 @@ auto_rename = False
 insecure = False
 m3u8 = False
 postfix = False
+prefix = None
 
 fake_headers = {
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',  # noqa
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     'Accept-Charset': 'UTF-8,*;q=0.5',
     'Accept-Encoding': 'gzip,deflate,sdch',
     'Accept-Language': 'en-US,en;q=0.8',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.74 Safari/537.36 Edg/79.0.309.43',  # noqa
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36 Edg/126.0.2592.113'  # Latest Edge
 }
 
 if sys.stdout.isatty():
@@ -344,21 +345,25 @@ def undeflate(data):
 
 # an http.client implementation of get_content()
 # because urllib does not support "Connection: keep-alive"
-def getHttps(host, url, headers, gzip=True, deflate=False, debuglevel=0):
+def getHttps(host, url, headers, debuglevel=0):
     import http.client
 
     conn = http.client.HTTPSConnection(host)
     conn.set_debuglevel(debuglevel)
     conn.request("GET", url, headers=headers)
     resp = conn.getresponse()
+    logging.debug('getHttps: %s' % resp.getheaders())
+    set_cookie = resp.getheader('set-cookie')
 
     data = resp.read()
-    if gzip:
-        data = ungzip(data)
-    if deflate:
-        data = undeflate(data)
+    try:
+        data = ungzip(data)  # gzip
+        data = undeflate(data)  # deflate
+    except:
+        pass
 
-    return str(data, encoding='utf-8')
+    conn.close()
+    return str(data, encoding='utf-8'), set_cookie  # TODO: support raw data
 
 
 # DEPRECATED in favor of get_content()
@@ -710,7 +715,7 @@ def url_save(
                         bar.done()
                     if not force and auto_rename:
                         path, ext = os.path.basename(filepath).rsplit('.', 1)
-                        finder = re.compile(' \([1-9]\d*?\)$')
+                        finder = re.compile(r' \([1-9]\d*?\)$')
                         if (finder.search(path) is None):
                             thisfile = path + ' (1).' + ext
                         else:
@@ -802,6 +807,8 @@ def url_save(
                     except socket.timeout:
                         pass
                     if not buffer:
+                        if file_size == float('+inf'):  # Prevent infinite downloading
+                            break
                         if is_chunked and received_chunk == range_length:
                             break
                         elif not is_chunked and received == file_size:  # Download finished
@@ -822,9 +829,10 @@ def url_save(
         received, os.path.getsize(temp_filepath), temp_filepath
     )
 
-    if os.access(filepath, os.W_OK):
+    if os.access(filepath, os.W_OK) and file_size != float('inf'):
         # on Windows rename could fail if destination filepath exists
-        os.remove(filepath)
+        # we should simply choose a new name instead of brutal os.remove(filepath)
+        filepath = filepath + " (2)"
     os.rename(temp_filepath, filepath)
 
 
@@ -1011,6 +1019,8 @@ def download_urls(
     title = tr(get_filename(title))
     if postfix and 'vid' in kwargs:
         title = "%s [%s]" % (title, kwargs['vid'])
+    if prefix is not None:
+        title = "[%s] %s" % (prefix, title)
     output_filename = get_output_filename(urls, title, ext, output_dir, merge)
     output_filepath = os.path.join(output_dir, output_filename)
 
@@ -1560,8 +1570,12 @@ def script_main(download, download_playlist, **kwargs):
         help='Do not download captions (subtitles, lyrics, danmaku, ...)'
     )
     download_grp.add_argument(
-        '--postfix', action='store_true', default=False,
+        '--post', '--postfix', dest='postfix', action='store_true', default=False,
         help='Postfix downloaded files with unique identifiers'
+    )
+    download_grp.add_argument(
+        '--pre', '--prefix', dest='prefix', metavar='PREFIX', default=None,
+        help='Prefix downloaded files with string'
     )
     download_grp.add_argument(
         '-f', '--force', action='store_true', default=False,
@@ -1686,6 +1700,7 @@ def script_main(download, download_playlist, **kwargs):
     global insecure
     global m3u8
     global postfix
+    global prefix
     output_filename = args.output_filename
     extractor_proxy = args.extractor_proxy
 
@@ -1723,6 +1738,7 @@ def script_main(download, download_playlist, **kwargs):
         insecure = True
 
     postfix = args.postfix
+    prefix = args.prefix
 
     if args.no_proxy:
         set_http_proxy('')
@@ -1843,9 +1859,12 @@ def url_to_module(url):
         )
     else:
         try:
-            location = get_location(url) # t.co isn't happy with fake_headers
+            try:
+                location = get_location(url) # t.co isn't happy with fake_headers
+            except:
+                location = get_location(url, headers=fake_headers)
         except:
-            location = get_location(url, headers=fake_headers)
+            location = get_location(url, headers=fake_headers, get_method='GET')
 
         if location and location != url and not location.startswith('/'):
             return url_to_module(location)

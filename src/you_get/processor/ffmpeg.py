@@ -128,7 +128,7 @@ def ffmpeg_concat_mp4_to_mpg(files, output='output.mpg'):
 
 def ffmpeg_concat_ts_to_mkv(files, output='output.mkv'):
     print('Merging video parts... ', end="", flush=True)
-    params = [FFMPEG] + LOGLEVEL + ['-isync', '-y', '-i']
+    params = [FFMPEG] + LOGLEVEL + ['-y', '-i']
     params.append('concat:')
     for file in files:
         if os.path.isfile(file):
@@ -175,7 +175,7 @@ def ffmpeg_concat_flv_to_mp4(files, output='output.mp4'):
     if FFMPEG == 'avconv':
         params += ['-c', 'copy']
     else:
-        params += ['-c', 'copy', '-absf', 'aac_adtstoasc']
+        params += ['-c', 'copy', '-bsf:a', 'aac_adtstoasc']
     params.extend(['--', output])
 
     if subprocess.call(params, stdin=STDIN) == 0:
@@ -229,7 +229,7 @@ def ffmpeg_concat_mp4_to_mp4(files, output='output.mp4'):
     if FFMPEG == 'avconv':
         params += ['-c', 'copy']
     else:
-        params += ['-c', 'copy', '-absf', 'aac_adtstoasc']
+        params += ['-c', 'copy', '-bsf:a', 'aac_adtstoasc']
     params.extend(['--', output])
 
     subprocess.check_call(params, stdin=STDIN)

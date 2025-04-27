@@ -1,12 +1,7 @@
 #!/usr/bin/env python
 import base64
 
-import binascii
-
 from ..common import *
-import random
-import string
-import ctypes
 from json import loads
 from urllib import request
 
@@ -95,6 +90,8 @@ def ixigua_download(url, output_dir='.', merge=True, info_only=False, stream_id=
 
 def convertStreams(video_list, audio_url):
     streams = []
+    if type(video_list) == dict:
+        video_list = video_list.values()
     for dynamic_video in video_list:
         streams.append({
             'file_id': dynamic_video['file_hash'],

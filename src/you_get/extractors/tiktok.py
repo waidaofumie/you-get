@@ -9,29 +9,32 @@ def tiktok_download(url, output_dir='.', merge=True, info_only=False, **kwargs):
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:88.0) Gecko/20100101 Firefox/88.0',
         'Accept-Encoding': 'gzip, deflate',
         'Accept': '*/*',
+        'Referer': 'https://www.tiktok.com/',
         'Connection': 'keep-alive'  # important
     }
 
     m = re.match('(https?://)?([^/]+)(/.*)', url)
     host = m.group(2)
     if host != 'www.tiktok.com':  # non-canonical URL
-        html = getHttps(host, url, headers=headers, gzip=False)
-        url = r1(r'(https://www.tiktok.com/[^?"]+)', html)
-        # use canonical URL
-        m = re.match('(https?://)?([^/]+)(/.*)', url)
-        host = m.group(2)
+        if host == 'vt.tiktok.com':  # short URL
+            url = get_location(url)
+        vid = r1(r'/video/(\d+)', url)
+        url = 'https://www.tiktok.com/@/video/%s/' % vid
+        host = 'www.tiktok.com'
+    else:
+        url = m.group(3).split('?')[0]
+        vid = url.split('/')[3]  # should be a string of numbers
 
-    url = m.group(3).split('?')[0]
-    vid = url.split('/')[3]  # should be a string of numbers
+    html, set_cookie = getHttps(host, url, headers=headers)
+    tt_chain_token = r1('tt_chain_token=([^;]+);', set_cookie)
+    headers['Cookie'] = 'tt_chain_token=%s' % tt_chain_token
 
-    html = getHttps(host, url, headers=headers)
-
-    data = r1(r'window\[\'SIGI_STATE\'\]=(.*?);window\[\'SIGI_RETRY\'\]', html) or \
-        r1(r'<script id="SIGI_STATE" type="application/json">(.*?)</script>', html)
+    data = r1(r'<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application/json">(.*?)</script>', html)
     info = json.loads(data)
-    downloadAddr = info['ItemModule'][vid]['video']['downloadAddr']
-    author = info['ItemModule'][vid]['author']  # same as uniqueId
-    nickname = info['UserModule']['users'][author]['nickname']
+    itemStruct = info['__DEFAULT_SCOPE__']['webapp.video-detail']['itemInfo']['itemStruct']
+    downloadAddr = itemStruct['video']['downloadAddr']
+    author = itemStruct['author']['uniqueId']
+    nickname = itemStruct['author']['nickname']
     title = '%s [%s]' % (nickname or author, vid)
 
     mime, ext, size = url_info(downloadAddr, headers=headers)
